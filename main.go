@@ -8,12 +8,11 @@ import (
 	"hash/fnv"
 	"io"
 	"net/http"
+	URL "net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	URL "net/url"
 
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -42,17 +41,13 @@ type CrawlData struct {
 
 func (c *CrawlData) Add(url string) {
 	c.mu.Lock()
-
 	defer c.mu.Unlock()
-
 	c.data[getHash(url)] = true
 }
 
 func (c *CrawlData) Size() int {
 	c.mu.Lock()
-
 	defer c.mu.Unlock()
-
 	return len(c.data)
 }
 
@@ -66,37 +61,27 @@ func (q *Queue) Enqueue(url string) {
 func (q *Queue) Dequeue() (string, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-
 	if len(q.messages) == 0 {
 		return "", false
 	}
-
 	url := q.messages[0]
-
 	q.messages = q.messages[1:]
-
 	q.total--
-
 	return url, true
 }
 func getHash(url string) uint64 {
 	bytes, err := json.Marshal(url)
-
 	if err != nil {
 		return 0
 	}
-
 	h := fnv.New64a()
 	h.Write(bytes)
 	return h.Sum64()
 }
 func (c *CrawlData) IsVisited(url string) bool {
-
 	hash := getHash(url)
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	_, found := c.data[hash]
 	return found
 }
@@ -109,9 +94,7 @@ type DB struct {
 func InitDB(uri string) *DB {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	opts := options.Client().ApplyURI(uri)
-
 	client, err := mongo.Connect(opts)
 	if err != nil {
 		panic(err)
@@ -133,55 +116,38 @@ func (DB *DB) Insert(webpage WebPage) {
 	DB.Collection.InsertOne(ctx, webpage)
 }
 func main() {
-
 	err := godotenv.Load()
-
 	if err != nil {
 		fmt.Println("Error loading env file!")
 	}
-
 	var DB *DB
-
 	mongoURI := os.Getenv("MONGO_HOST")
-
 	if len(mongoURI) > 0 {
 		DB = InitDB(mongoURI)
 	}
-
 	args := os.Args[1:]
-
 	var wg sync.WaitGroup
-
 	if len(args) == 0 {
 		fmt.Println("go run main.go seedurl.")
 	}
-
 	url := args[0]
-
 	url = strings.ToLower(url)
-
 	queue := Queue{
 		total:    0,
 		messages: make([]string, 0),
 	}
-
 	crawled := CrawlData{
 		data: make(map[uint64]bool, 1024),
 	}
 	queue.Enqueue(url)
-
 	crawled.data[getHash(url)] = true
-
 	// StartWorker(&queue, 2, &crawled)
 	for i := 1; i <= 5; i++ {
 		wg.Add(1)
 		go StartWorker(&queue, i, &crawled, &wg, DB)
 	}
-
 	wg.Wait()
-
 	fmt.Printf("Crawled : %v records!\n", crawled.Size())
-
 	for _, page := range pages {
 		fmt.Printf("%v : \t%v\n %v\n\n", page.URL, page.Title, page.Content)
 	}
@@ -189,16 +155,14 @@ func main() {
 
 func fetchPage(url string, worker int) []byte {
 
+	//TODO : need to refactor with context for workers
 	fmt.Printf("worker #%v fetching url from %v\n", worker, url)
-
 	resp, err := http.Get(url)
-
 	if err != nil {
 		fmt.Printf("Error fetching url : %v\n", err)
 		return []byte{}
 	}
 	defer resp.Body.Close()
-
 	result, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Error reading response body : %v\n", err)
@@ -209,16 +173,11 @@ func fetchPage(url string, worker int) []byte {
 
 func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB *DB) {
 	z := html.NewTokenizer(bytes.NewReader(content))
-
 	webPage := WebPage{Title: "", URL: url, Content: ""}
-
 	baseurl, _ := URL.Parse(url)
-
 	var body, title bool
-
 	var bodyContent bytes.Buffer
 	for {
-
 		if z.Next() == html.ErrorToken {
 			if z.Err() == io.EOF {
 				break // End of the document
@@ -226,9 +185,7 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 			fmt.Println("Error:", z.Err())
 			break
 		}
-
 		tt := z.Token()
-
 		switch tt.Type {
 		case html.StartTagToken:
 			if tt.Data == "javascript" || tt.Data == "script" || tt.Data == "style" {
@@ -236,12 +193,10 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 				z.Next()
 				continue
 			}
-
 			if tt.Data == "title" {
 				title = true
 				continue
 			}
-
 			if tt.Data == "p" {
 				body = true
 				continue
@@ -250,17 +205,12 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 				// Extract text content of the anchor tag
 				for _, attr := range tt.Attr {
 					if attr.Key == "href" {
-
 						url = attr.Val
-
 						if len(url) > 0 && (strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "/")) {
-
 							if strings.HasPrefix(url, "/") {
 								url = baseurl.Host + url
 							}
-
 							visited := crawled.IsVisited(url)
-
 							if visited {
 								continue
 							} else {
@@ -272,7 +222,6 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 				}
 			}
 		case html.TextToken:
-
 			if title {
 				webPage.Title = strings.TrimSpace(tt.Data)
 				title = false
@@ -284,11 +233,9 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 			if tt.Data == "p" {
 				body = false
 				webPage.Content = strings.TrimSpace(bodyContent.String())
-
 			}
 		}
 	}
-
 	webPage.CrawledAt = time.Now().UnixMilli()
 	DB.Insert(webPage)
 }
@@ -298,10 +245,8 @@ func StartWorker(queue *Queue, workerID int, crawled *CrawlData, wg *sync.WaitGr
 
 	for crawled.Size() < 500 {
 		url, success := queue.Dequeue()
-
 		if success {
 			result := fetchPage(url, workerID)
-
 			if len(result) > 0 {
 				parseHtml(url, result, queue, crawled, DB)
 			}
