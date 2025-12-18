@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"log"
 	"net/http"
 	URL "net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +21,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"golang.org/x/net/html"
 )
-
-var pages = make([]WebPage, 10)
 
 type WebPage struct {
 	Title     string
@@ -107,7 +107,6 @@ func InitDB(uri string) *DB {
 		Client:     client,
 		Collection: client.Database("Crawler").Collection("WebPage"),
 	}
-
 }
 
 func (DB *DB) Insert(webpage WebPage) {
@@ -116,20 +115,49 @@ func (DB *DB) Insert(webpage WebPage) {
 	DB.Collection.InsertOne(ctx, webpage)
 }
 func main() {
+
+	var workers, crawl_size = 2, 500
+
+	var wg sync.WaitGroup
+
+	var DB *DB
+
+	//load ENV
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Error loading env file!")
+		log.Fatal("Error loading env file!")
 	}
-	var DB *DB
+
 	mongoURI := os.Getenv("MONGO_HOST")
+	worker_count := os.Getenv("WORKER_COUNT")
+	size := os.Getenv("SIZE")
+
+	//check format
+	args := os.Args[1:]
+	if len(args) == 0 {
+		log.Fatal("go run main.go seedurl.")
+	}
+
 	if len(mongoURI) > 0 {
 		DB = InitDB(mongoURI)
+		defer DB.Client.Disconnect(context.TODO())
 	}
-	args := os.Args[1:]
-	var wg sync.WaitGroup
-	if len(args) == 0 {
-		fmt.Println("go run main.go seedurl.")
+
+	if len(worker_count) > 0 {
+		workers, err = strconv.Atoi(worker_count)
+		if err != nil {
+			log.Fatal("Invalid WORKER_COUNT")
+		}
 	}
+
+	if len(worker_count) > 0 {
+		crawl_size, err = strconv.Atoi(size)
+
+		if err != nil {
+			log.Fatal("Invalid SIZE")
+		}
+	}
+
 	url := args[0]
 	url = strings.ToLower(url)
 	queue := Queue{
@@ -142,15 +170,13 @@ func main() {
 	queue.Enqueue(url)
 	crawled.data[getHash(url)] = true
 	// StartWorker(&queue, 2, &crawled)
-	for i := 1; i <= 5; i++ {
+	for i := 1; i <= workers; i++ {
 		wg.Add(1)
-		go StartWorker(&queue, i, &crawled, &wg, DB)
+		go StartWorker(&queue, i, &crawled, &wg, DB, crawl_size)
 	}
 	wg.Wait()
+
 	fmt.Printf("Crawled : %v records!\n", crawled.Size())
-	for _, page := range pages {
-		fmt.Printf("%v : \t%v\n %v\n\n", page.URL, page.Title, page.Content)
-	}
 }
 
 func fetchPage(url string, worker int) []byte {
@@ -237,13 +263,17 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 		}
 	}
 	webPage.CrawledAt = time.Now().UnixMilli()
-	DB.Insert(webPage)
+
+	if DB != nil {
+		//TODO : is it thread safe?
+		DB.Insert(webPage)
+	}
 }
 
-func StartWorker(queue *Queue, workerID int, crawled *CrawlData, wg *sync.WaitGroup, DB *DB) {
+func StartWorker(queue *Queue, workerID int, crawled *CrawlData, wg *sync.WaitGroup, DB *DB, size int) {
 	fmt.Printf("starting worker : %v\n", workerID)
 
-	for crawled.Size() < 500 {
+	for crawled.Size() < size {
 		url, success := queue.Dequeue()
 		if success {
 			result := fetchPage(url, workerID)
