@@ -12,6 +12,8 @@ Tiny web crawler for studying Data Structure and System Design.
 - **Memory-Efficient Hashing:** Uses **FNV-64a** hashing to track visited URLs, minimizing the RAM required for the "visited" set.
 
 
+
+
 ## ⚙️ Configuration
 
 Create a `.env` file in the project root to manage credentials and scaling:
@@ -20,6 +22,7 @@ Create a `.env` file in the project root to manage credentials and scaling:
 MONGO_HOST=mongodb+srv://<username>:<password>@cluster.mongodb.net/
 WORKER_COUNT=5
 SIZE=500
+```
 
 ## 🚀 Getting Started
 
@@ -41,7 +44,7 @@ git clone [https://github.com/yourusername/go-crawler.git](https://github.com/yo
 cd go-crawler
 
 # Install Go modules (mongo-driver, godotenv, x/net/html)
-go mod tidy
+go mod tidy ```
 
 
 # System Design
@@ -49,5 +52,3 @@ go mod tidy
 
 # Results 
 ![Results](images/results.png)
-
-
