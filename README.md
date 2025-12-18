@@ -12,6 +12,12 @@ Tiny web crawler for studying Data Structure and System Design.
 - **Memory-Efficient Hashing:** Uses **FNV-64a** hashing to track visited URLs, minimizing the RAM required for the "visited" set.
 
 
+# System Design
+![System Design](images/design.png)
+
+# Results 
+![Results](images/results.png)
+
 
 
 ## ⚙️ Configuration
@@ -44,11 +50,7 @@ git clone [https://github.com/yourusername/go-crawler.git](https://github.com/yo
 cd go-crawler
 
 # Install Go modules (mongo-driver, godotenv, x/net/html)
-go mod tidy ```
+go mod tidy
+```
 
 
-# System Design
-![System Design](images/design.png)
-
-# Results 
-![Results](images/results.png)
