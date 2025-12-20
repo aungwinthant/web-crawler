@@ -201,6 +201,9 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 	z := html.NewTokenizer(bytes.NewReader(content))
 	webPage := WebPage{Title: "", URL: url, Content: ""}
 	baseurl, _ := URL.Parse(url)
+
+	resolvedURL := baseurl.ResolveReference(baseurl)
+
 	var body, title bool
 	var bodyContent bytes.Buffer
 	for {
@@ -234,7 +237,7 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 						url = attr.Val
 						if len(url) > 0 && (strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "/")) {
 							if strings.HasPrefix(url, "/") {
-								url = baseurl.Host + url
+								url = resolvedURL.String() + url
 							}
 							visited := crawled.IsVisited(url)
 							if visited {
@@ -264,10 +267,10 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 	}
 	webPage.CrawledAt = time.Now().UnixMilli()
 
-	if DB != nil {
-		//TODO : is it thread safe?
-		DB.Insert(webPage)
-	}
+	// if DB != nil {
+	// 	//TODO : is it thread safe?
+	// 	DB.Insert(webPage)
+	// }
 }
 
 func StartWorker(queue *Queue, workerID int, crawled *CrawlData, wg *sync.WaitGroup, DB *DB, size int) {
