@@ -179,14 +179,22 @@ func main() {
 	fmt.Printf("Crawled : %v records!\n", crawled.Size())
 }
 
-func fetchPage(url string, worker int) []byte {
+func fetchPage(url string, worker int, ctx context.Context) []byte {
 
-	//TODO : need to refactor with context for workers
 	fmt.Printf("worker #%v fetching url from %v\n", worker, url)
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		fmt.Printf("Error fetching url : %v\n", err)
+		fmt.Printf("Failed to create request : %v\n", err)
 		return []byte{}
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		//check if it is context deadline/timeout
+		if ctx.Err() != nil {
+			fmt.Printf("request timed out: %v\n", ctx.Err())
+		} else {
+			fmt.Printf("request failed: %v\n", err)
+		}
 	}
 	defer resp.Body.Close()
 	result, err := io.ReadAll(resp.Body)
@@ -267,10 +275,10 @@ func parseHtml(url string, content []byte, queue *Queue, crawled *CrawlData, DB 
 	}
 	webPage.CrawledAt = time.Now().UnixMilli()
 
-	// if DB != nil {
-	// 	//TODO : is it thread safe?
-	// 	DB.Insert(webPage)
-	// }
+	if DB != nil {
+		//TODO : is it thread safe?
+		DB.Insert(webPage)
+	}
 }
 
 func StartWorker(queue *Queue, workerID int, crawled *CrawlData, wg *sync.WaitGroup, DB *DB, size int) {
@@ -279,7 +287,10 @@ func StartWorker(queue *Queue, workerID int, crawled *CrawlData, wg *sync.WaitGr
 	for crawled.Size() < size {
 		url, success := queue.Dequeue()
 		if success {
-			result := fetchPage(url, workerID)
+			//added context for each requests
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			result := fetchPage(url, workerID, ctx)
 			if len(result) > 0 {
 				parseHtml(url, result, queue, crawled, DB)
 			}
