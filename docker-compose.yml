@@ -1,0 +1,23 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  crawler:
+    build: .
+    container_name: go-crawler
+    depends_on:
+      - mongodb
+    environment:
+      - MONGO_HOST=mongodb://mongodb:27017
+      - WORKER_COUNT=2
+      - SIZE=200
+    # Pass the seed URL as a command argument
+    command: ["https://go.dev"]
+
+volumes:
+  mongo-data:
